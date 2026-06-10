@@ -1,0 +1,32 @@
+# Секрети — НІКОЛИ не комітити
+.env
+*.env
+
+# База даних і логи
+data/
+logs/
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Віртуальне середовище
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
