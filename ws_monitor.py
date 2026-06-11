@@ -23,6 +23,7 @@ from collections import deque
 import websockets
 import httpx
 import config
+import hot_coins
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ─── Налаштування ────────────────────────────────────────────────────────────
-COINS = ["SUI", "INJ", "APT", "SEI", "ARB", "OP", "TIA"]
+COINS = hot_coins.get_current_coins()  # динамічний список
 
 MIN_DEVIATION_PCT    = 1.0    # % відхилення між біржами (звичайний режим)
 HIGH_VOL_DEVIATION   = 0.3    # % відхилення при високій волатильності
@@ -178,7 +179,17 @@ async def monitor_volatility():
 
     while True:
         try:
-            symbols = [f"{coin}USDT" for coin in COINS]
+            # Оновлюємо список монет (hot_coins кешує, реально оновлює раз на 15 хв)
+            await hot_coins.refresh()
+            current_coins = hot_coins.get_current_coins()
+
+            # Додаємо нові монети в states якщо з'явились
+            for coin in current_coins:
+                if coin not in states:
+                    states[coin] = CoinState(coin=coin)
+                    logger.info(f"🔥 Нова монета в моніторингу: {coin}")
+
+            symbols = [f"{coin}USDT" for coin in current_coins]
             async with httpx.AsyncClient() as client:
                 r = await client.get(
                     "https://api.binance.com/api/v3/ticker/24hr",

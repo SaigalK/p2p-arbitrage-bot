@@ -161,7 +161,7 @@ def fetch_p2p():
 
 @st.cache_data(ttl=5)
 def fetch_arb():
-    """Gate / OKX / MEXC / HTX — кращий спред для кожної монети"""
+    """Gate / OKX / MEXC — кращий спред для кожної монети"""
     async def _fetch():
         async with httpx.AsyncClient() as client:
             all_tasks = {
@@ -266,7 +266,7 @@ with col_p2p:
         st.plotly_chart(fig, use_container_width=True)
 
 with col_arb:
-    st.markdown("### 🔀 Арбітраж — Gate / OKX / MEXC / HTX")
+    st.markdown("### 🔀 Арбітраж — Gate / OKX / MEXC")
 
     opportunities = [r for r in spreads if r.is_opportunity]
 

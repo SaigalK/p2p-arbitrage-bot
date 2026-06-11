@@ -18,9 +18,10 @@ from itertools import combinations
 
 import httpx
 import config
+import hot_coins
 
 # ─── Налаштування ──────────────────────────────────────────────────────────
-COINS          = ["SUI", "SEI", "APT", "TIA", "INJ", "ARB", "OP"]
+COINS          = hot_coins.get_current_coins()  # динамічний список (оновлюється кожні 15 хв)
 MIN_NET_PCT    = 0.7    # Мінімальний NET спред після комісій для алерту (%)
 MIN_DEPTH_USD  = 1000   # Мінімальна глибина стакану ($)
 CHECK_INTERVAL = 300    # Кожні 5 хвилин
@@ -255,10 +256,11 @@ async def send_alert(client: httpx.AsyncClient, opportunities: list[SpreadResult
         print(f"❌ Telegram: {e}")
 
 # ─── Головний цикл ──────────────────────────────────────────────────────────
-async def check_once(client: httpx.AsyncClient, quiet: bool = False) -> list[SpreadResult]:
+async def check_once(client: httpx.AsyncClient, quiet: bool = False, coins: list[str] | None = None) -> tuple:
+    coins = coins or hot_coins.get_current_coins()
     # Паралельно отримуємо ціни з усіх бірж для всіх монет
     all_tasks = {
-        ex: [fn(client, coin) for coin in COINS]
+        ex: [fn(client, coin) for coin in coins]
         for ex, fn in EXCHANGE_FETCHERS.items()
     }
     gathered = await asyncio.gather(
@@ -272,7 +274,7 @@ async def check_once(client: httpx.AsyncClient, quiet: bool = False) -> list[Spr
     results = []
     opps    = []
 
-    for i, coin in enumerate(COINS):
+    for i, coin in enumerate(coins):
         prices = {ex: all_results[ex][i] for ex in EXCHANGE_FETCHERS}
         r = best_spread_for_coin(coin, prices)
         if r:
@@ -307,18 +309,32 @@ async def check_once(client: httpx.AsyncClient, quiet: bool = False) -> list[Spr
 
 
 async def main():
+    # Перше оновлення гарячих монет перед стартом
+    await hot_coins.refresh(force=True)
+    coins_now = hot_coins.get_current_coins()
+
     print("🤖 Арбітраж монітор запущено")
     print(f"   Біржі:    {', '.join(EXCHANGE_FETCHERS.keys()).upper()}")
-    print(f"   Монети:   {', '.join(COINS)}")
+    print(f"   Монети:   {', '.join(coins_now)} ({len(coins_now)} шт)")
     print(f"   Поріг:    NET спред >{MIN_NET_PCT}% (після комісій) + глибина >${MIN_DEPTH_USD}")
     print(f"   Комісії:  Gate {EXCHANGE_FEES['gate']}% | OKX {EXCHANGE_FEES['okx']}% | MEXC {EXCHANGE_FEES['mexc']}%\n")
 
     async with httpx.AsyncClient() as client:
+        cycle = 0
         while True:
             try:
-                opps, _ = await check_once(client)
+                # Оновлюємо список монет кожні 15 хв (hot_coins сам кешує)
+                await hot_coins.refresh()
+                coins = hot_coins.get_current_coins()
+
+                opps, results = await check_once(client, coins=coins)
                 if opps:
                     await send_alert(client, opps)
+
+                cycle += 1
+                if cycle % 3 == 0:  # кожні 15 хв логуємо список
+                    print(f"🔥 Монети ({len(coins)}): {', '.join(coins)}")
+
             except Exception as e:
                 print(f"❌ Помилка: {e}")
             await asyncio.sleep(CHECK_INTERVAL)
